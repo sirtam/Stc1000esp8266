@@ -10,3 +10,6 @@ The code is also inspired by https://github.com/vieuxsinge/stc1000esp, but I nev
 
 Some notes:
 STC1000+ is flashed with the picprog_com script. This is needed to have the half duplex communication between ESP and STC
+
+Libraries:
+https://github.com/fredericsureau/arduino-stc1000p
