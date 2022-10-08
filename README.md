@@ -13,3 +13,13 @@ STC1000+ is flashed with the picprog_com script. This is needed to have the half
 
 Libraries:
 https://github.com/fredericsureau/arduino-stc1000p
+
+Pin configuration:
+
+STC1000 | NodeMCU
+------- | -------
+ICSPCLK | D0
+ICSPDAT | Unused
+GND     | GND
+5V      | VIN
+mCLR    | Unused
