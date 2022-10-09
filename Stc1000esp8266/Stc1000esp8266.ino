@@ -6,6 +6,11 @@
 * Written for ESP8266
 *
 * Write license and acknowledgements
+*
+* This code uses only the first profile in the STC.
+* TODO make use of full profile for temperature schema
+* This code only set the set point so you have to manually set all temperatures 
+* TODO include more profiles
 */
 
 //use D0 pin since this has a build in pulldown resistor
@@ -88,7 +93,9 @@ void setup() {
   Serial.begin(9600);
 }
 
+
 void loop() {
+  //use "No Line Ending" for clean menu inputs
   Serial.println("\n--- Concept STC1000+ communication ---");
   Serial.println("Use the following commands:");
   Serial.println("r (read all data)");
@@ -106,9 +113,14 @@ void loop() {
     break;
     case 's':
       writeData(random(100));
+      break;
     default: //TODO this is triggered every rerun, find a way to avoid this
       Serial.print(input);
       Serial.println(" is not a valid command");
   }
-  delay(50); //making ready for new run
+  
+  //emptying read buffer
+  while(Serial.available()) {
+    Serial.read();
+  }
 }
