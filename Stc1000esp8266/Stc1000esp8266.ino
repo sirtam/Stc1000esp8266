@@ -1,4 +1,8 @@
+#include "config.h"
 #include <Stc1000p.h>
+#include <ESP8266WiFi.h>
+
+//#include <HTTPClient.h>
 
 /*
 * Copyright 2022 Thomas André Transeth
@@ -6,6 +10,8 @@
 * Written for ESP8266
 *
 * Write license and acknowledgements
+*
+* All personal credentials are stored in config.h. Please use the sample file in project to add personal configuration.
 *
 * This code uses only the first profile in the STC.
 * TODO make use of full profile for temperature schema
@@ -16,34 +22,40 @@
 //use D0 pin since this has a build in pulldown resistor
 Stc1000p stc1000p(D0, INPUT_PULLDOWN_16);
 
+char* SSID = WIFI_SSID;
+char* PASSWORD = WIFI_PASSWORD;
+
+//get current temperature on STC
 float readTemp() {
   float temp = 0;
-  if( stc1000p.readTemperature(&temp) ) {
+  if (stc1000p.readTemperature(&temp)) {
     return temp;
   }
   return false;
 }
 
+//check if power for heating is on
 bool readHeating() {
- bool heat;
-  if( stc1000p.readHeating(&heat) ) {
+  bool heat;
+  if (stc1000p.readHeating(&heat)) {
     return heat;
   }
 }
 
+//check if power for cooling is on
 bool readCooling() {
   bool cool;
-  if( stc1000p.readCooling(&cool) ) {
+  if (stc1000p.readCooling(&cool)) {
     return cool;
   }
 }
 
+//read current setpoint on STC 
 int readSetPoint() {
   int sp;
-  if( stc1000p.readEeprom(114, &sp) ) {
+  if (stc1000p.readEeprom(114, &sp)) {
     return sp;
-  }
-  else {
+  } else {
     return false;
   }
 }
@@ -51,11 +63,10 @@ int readSetPoint() {
 void readData() {
 
   float temp = readTemp();
-  if(temp) {
+  if (temp) {
     Serial.print("Temperature: ");
     Serial.println(temp);
-  }
-  else {
+  } else {
     Serial.println("Failed to read temperature");
   }
 
@@ -69,28 +80,39 @@ void readData() {
 
 
   int sp = readSetPoint();
-  if(sp) {
+  if (sp) {
     Serial.print("Setpoint: ");
-    Serial.println((float)sp/10);
-  }
-  else {
+    Serial.println((float)sp / 10);
+  } else {
     Serial.println("Failed to read setpoint");
   }
 }
 
 void writeData(uint16_t spw) {
-  if( stc1000p.writeEeprom(114, (spw*10)) ) { //TODO change to accept decimals
-      Serial.print("Writing new setpoint: ");
-      Serial.println(spw);
-  }
-  else {
+  if (stc1000p.writeEeprom(114, (spw * 10))) {  //TODO change to accept decimals
+    Serial.print("Writing new setpoint: ");
+    Serial.println(spw);
+  } else {
     Serial.println("Failed to write setpoint");
   }
 }
 
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
+
+  //set up wifi connection
+  WiFi.begin(SSID, PASSWORD);
+
+  //wait for connection
+  Serial.print("\nConnecting to WiFi: ");
+  Serial.println(SSID);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.print("\nWiFi connected with IP: ");
+  Serial.println(WiFi.localIP());
 }
 
 
@@ -102,25 +124,25 @@ void loop() {
   Serial.println("s (write setpoint with random number)");
   Serial.println("\nWaiting for input...");
 
-  while(Serial.available() == 0) { }  //do nothing
-  //String input = Serial.readString(); 
+  while (Serial.available() == 0) {}  //do nothing
+  //String input = Serial.readString();
   char input = Serial.read();
-  
-  switch(input) {
+
+  switch (input) {
     case 'r':
       Serial.println("-- Reading all data from STC --");
       readData();
-    break;
+      break;
     case 's':
       writeData(random(100));
       break;
-    default: //TODO this is triggered every rerun, find a way to avoid this
+    default:
       Serial.print(input);
       Serial.println(" is not a valid command");
   }
-  
+
   //emptying read buffer
-  while(Serial.available()) {
+  while (Serial.available()) {
     Serial.read();
   }
 }
