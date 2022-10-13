@@ -37,58 +37,47 @@ WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
 
 int sendIntervalMillis = 15000; //how often data is sent to db
+int getIntervalMillis = 10000; //how often data is requested from db
+
 unsigned long sendDataPrevMillis = 0; //tracker of time intervall for sending data
+unsigned long getDataPrevMillis = 0; //tracker of time intervall for requesting data
+
 bool signupOK = false; //is firebase connected?
+
 
 //get current temperature on STC
 float readTemp() {
-  float temp = 0;
-  if (stc1000p.readTemperature(&temp)) { 
-    return temp;
-  }
-  return false;
+  float temp;
+  return (stc1000p.readTemperature(&temp)) ? temp :  false;  
 }
 
 //check if power for heating is on
 bool readHeating() {
   bool heat;
-  if (stc1000p.readHeating(&heat)) {
-    return heat;
-  }
+  return (stc1000p.readHeating(&heat)) ? heat : false;
 }
 
 //check if power for cooling is on
 bool readCooling() {
   bool cool;
-  if (stc1000p.readCooling(&cool)) {
-    return cool;
-  }
+  return (stc1000p.readCooling(&cool)) ? cool : false;
 }
 
 //read current setpoint on STC 
 int readSetPoint() {
   int sp;
-  if (stc1000p.readEeprom(114, &sp)) {
-    return sp;
-  } else {
-    return false;
-  }
+  return (stc1000p.readEeprom(114, &sp)) ? sp : false;
 }
 
 //write new set point
 void writeSP(uint16_t spw) {
-  if( stc1000p.writeEeprom(114, (spw*10)) ) { //TODO change to accept decimals
-      Serial.print("Writing new setpoint: ");
-      Serial.println(spw);
-  }
-  else {
-    Serial.println("Failed to write setpoint");
-  }
+  //TODO change to accept decimals
+  (stc1000p.writeEeprom(114, (spw*10)) ) 
+  ? Serial.print("Writing new setpoint: " + spw) 
+  : Serial.println("Failed to write setpoint");
 }
 
-void setup() {
-  Serial.begin(115200);
-
+void wifiConnetion() {
   //set up wifi connection
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
@@ -96,13 +85,22 @@ void setup() {
   Serial.print("\nConnecting to WiFi: ");
   Serial.println(WIFI_SSID);
   while (WiFi.status() != WL_CONNECTED) {
+    int resetTime = millis();
     delay(500);
     Serial.print(".");
+    if(resetTime > millis() - 300000) {
+      ESP.reset();
+    }
   }
 
   //connected
   Serial.print("\nWiFi connected with IP: ");
   Serial.println(WiFi.localIP());
+}
+
+void setup() {
+  Serial.begin(115200);
+  wifiConnetion();
 
   //firebase credentials
   config.api_key = API_KEY;
@@ -123,71 +121,60 @@ void setup() {
 }
 void loop() {
 
-  //check if temperature setpoint has been altered
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > sendIntervalMillis || sendDataPrevMillis == 0)) {
-    if(Firebase.RTDB.getInt(&fbdo, "STC1000get/setpoint")) {
+  if(WiFi.status() != WL_CONNECTED) {
+    Serial.println("Reconnection WiFi");
+    wifiConnetion();
+  }
+  else {
 
-      int dbSP = fbdo.to<int>();
-      Serial.print("PASSED, SP in db is " + dbSP);
-      Serial.println("STC sp: "+ readSetPoint());
+    if(Firebase.ready()) {
 
-      if(dbSP != readSetPoint()) {
+    //check if temperature setpoint has been altered
+      if (millis() - getDataPrevMillis > getIntervalMillis || getDataPrevMillis == 0) {
+        if(Firebase.RTDB.getInt(&fbdo, "STC1000get/setpoint")) {
+          
+          getDataPrevMillis = millis();
 
-        writeSP(dbSP); //writing new set point
+          int dbSP = fbdo.to<int>();
+          int stcSP = readSetPoint();
+
+          if(stcSP && dbSP != readSetPoint()) {
+            writeSP(dbSP); //writing new set point
+          }
+        }
+      }
+
+      //send data to db
+      if (millis() - sendDataPrevMillis > sendIntervalMillis || sendDataPrevMillis == 0) {
+        
+        sendDataPrevMillis = millis();
+        FirebaseJson json;
+
+        timeClient.update(); //update time
+        int epochtime = timeClient.getEpochTime();
+        float temp = readTemp();
+        int setpoint = readSetPoint();
+        bool heating = readHeating();
+        bool cooling = readCooling();
+
+        //only send data if temp and epoch are read
+        if (temp && epochtime) {
+          json.set("STC1000set/epochtime", epochtime);
+          json.set("STC1000set/temperature", temp);
+          json.set("STC1000set/setpoint", setpoint);
+          json.set("STC1000set/isheating", heating);
+          json.set("STC1000set/iscooling", cooling);
+
+          json.toString(Serial, true);
+          Serial.printf("Sending jSON: %s\n", Firebase.RTDB.setJSON(&fbdo, "STC1000set", &json) ? "ok" : fbdo.errorReason());
+        }
+        else {
+          Serial.println("-- Missing data. Do not send to Firebase --");
+        }
       }
     }
     else {
-      Serial.println("FAILED ");
-      Serial.print("REASON: " + fbdo.errorReason());
+      Serial.println("-- Not able to connect to Firebase --");
     }
-    Serial.println();
-  }
-
-  //send data to db
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > sendIntervalMillis || sendDataPrevMillis == 0)) {
-    sendDataPrevMillis = millis();
-
-    //write temperature data to database
-    if (Firebase.RTDB.setFloat(&fbdo, "STC1000set/temperature", readTemp())) {
-      Serial.println("PASSED, PATH: " + fbdo.dataPath());
-    }
-    else {
-      Serial.println("FAILED, REASON: " + fbdo.errorReason());
-    }
-    
-    //write setpoint data to database
-    if (Firebase.RTDB.setInt(&fbdo, "STC1000set/setpoint", readSetPoint())) {
-      Serial.println("PASSED, PATH: " + fbdo.dataPath());
-    }
-    else {
-      Serial.println("FAILED, REASON: " + fbdo.errorReason());
-    }
-
-    //write bool heating data to database
-    if (Firebase.RTDB.setBool(&fbdo, "STC1000set/isheating", readHeating())) {
-      Serial.println("PASSED, PATH: " + fbdo.dataPath());
-    }
-    else {
-      Serial.println("FAILED, REASON: " + fbdo.errorReason());
-    }
-
-    //write bool cooling data to database
-    if (Firebase.RTDB.setBool(&fbdo, "STC1000set/iscooling", readCooling())) {
-      Serial.println("PASSED, PATH: " + fbdo.dataPath());
-    }
-    else {
-      Serial.println("FAILED, REASON: " + fbdo.errorReason());
-    }
-
-    //write time data to database
-    timeClient.update(); //update time
-    Serial.println(timeClient.getEpochTime());
-    if (Firebase.RTDB.setInt(&fbdo, "STC1000set/epochtime", timeClient.getEpochTime())) {
-      Serial.println("PASSED, PATH: " + fbdo.dataPath());
-    }
-    else {
-      Serial.println("FAILED, REASON: " + fbdo.errorReason());
-    }
-    Serial.println();
   }
 }
