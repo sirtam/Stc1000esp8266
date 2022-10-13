@@ -12,11 +12,14 @@ Some notes:
 STC1000+ is flashed with the picprog_com script. This is needed to have the half duplex communication between ESP and STC
 
 Firebase:
-https://randomnerdtutorials.com/esp32-firebase-realtime-database/#create-firebase-project
+For a full guide to set up Firebase, see https://randomnerdtutorials.com/esp32-firebase-realtime-database/#create-firebase-project
+The following changes are needed for this project:
 
 Libraries:
 https://github.com/fredericsureau/arduino-stc1000p
 https://www.arduino.cc/reference/en/libraries/firebase-arduino-client-library-for-esp8266-and-esp32/
+https://www.arduino.cc/reference/en/libraries/ntpclient/
+
 
 Pin configuration:
 
