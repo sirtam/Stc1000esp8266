@@ -67,10 +67,16 @@ void wifiConnetion() {
   Serial.println(WiFi.localIP());
 }
 
+// //get current runmode TODO: can't return bool
+// Stc1000pRunMode readRunmode() {
+//   Stc1000pRunMode runMode;
+//   return (stc1000p.readRunMode(&runMode)) ? runMode : false;  
+// }
+
 //get current temperature on STC
 float readTemp() {
   float temp;
-  return (stc1000p.readTemperature(&temp)) ? temp :  false;  
+  return (stc1000p.readTemperature(&temp)) ? temp : false;  
 }
 
 //check if power for heating is on
@@ -91,6 +97,55 @@ float readSetPoint() {
   return (stc1000p.readSetpoint(&sp)) ? sp : false;
   //return (stc1000p.readEeprom(114, &sp)) ? sp : false;
 }
+
+//read current hysteris
+float readHysteresis() {
+  float hysteresis;
+  return (stc1000p.readHysteresis(&hysteresis)) ? hysteresis : false;
+}
+
+//read current temp correction
+float readTempCorrection() {
+  float tempCorrection;
+  return (stc1000p.readTemperatureCorrection(&tempCorrection)) ? tempCorrection : false;
+}
+
+//read current setpoint alarm
+float readSetpointAlarm() {
+  float setpointAlarm;
+  return (stc1000p.readSetpointAlarm(&setpointAlarm)) ? setpointAlarm : false;
+}
+
+//read current step
+int readCurrentStep() {
+  int currentStep;
+  return (stc1000p.readCurrentStep(&currentStep)) ? currentStep : false;
+}
+
+//read current duration
+int readCurrentDuration() {
+  int currentDuration;
+  return (stc1000p.readCurrentDuration(&currentDuration)) ? currentDuration : false;
+}
+
+//read cooling delay
+int readCoolingDelay() {
+  int coolingDelay;
+  return (stc1000p.readCoolingDelay(&coolingDelay)) ? coolingDelay : false;
+}
+
+//read heating delay
+int readHeatingDelay() {
+  int heatingDelay;
+  return (stc1000p.readHeatingDelay(&heatingDelay)) ? heatingDelay : false;
+}
+
+//read current ramping
+bool readRamping() {
+  bool ramping;
+  return (stc1000p.readRamping(&ramping)) ? ramping : false;
+}
+
 
 //write new set point
 void writeSetPoint(float sp) {
@@ -118,17 +173,22 @@ void writeToDatabase() {
 
   int epochtime = timeClient.getEpochTime();
   float temp = readTemp();
-  float setpoint = readSetPoint();
-  bool heating = readHeating();
-  bool cooling = readCooling();
 
   //only send data if temp and epoch are read
   if (temp && epochtime) {
     json.set("STC1000set/epochtime", epochtime);
     json.set("STC1000set/temperature", temp);
-    json.set("STC1000set/setpoint", setpoint);
-    json.set("STC1000set/isheating", heating);
-    json.set("STC1000set/iscooling", cooling);
+    json.set("STC1000set/setpoint", readSetPoint());
+    json.set("STC1000set/isheating", readHeating());
+    json.set("STC1000set/iscooling", readCooling());
+    json.set("STC1000set/hysteresis", readHysteresis());
+    json.set("STC1000set/tempCorrection", readTempCorrection());
+    json.set("STC1000set/setpointAlarm", readSetpointAlarm());
+    json.set("STC1000set/currentStep", readCurrentStep());
+    json.set("STC1000set/currentDuration", readCurrentDuration());
+    json.set("STC1000set/coolingDelay", readCoolingDelay());
+    json.set("STC1000set/heatingDelay", readHeatingDelay());
+    json.set("STC1000set/ramping", readRamping());
 
     Serial.printf("Sending jSON: %s\n", Firebase.RTDB.setJSON(&fbdo, "STC1000set", &json) ? "ok" : fbdo.errorReason());
   }
@@ -141,6 +201,10 @@ void writeToDatabase() {
 void setup() {
 
   Serial.begin(115200);
+
+  //set STC to profile 0
+  stc1000p.writeRunMode(Stc1000pRunMode::PR0);
+
   wifiConnetion();
 
   //firebase credentials
