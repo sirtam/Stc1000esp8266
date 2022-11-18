@@ -68,9 +68,9 @@ void wifiConnetion() {
 }
 
 // //get current runmode TODO: can't return bool
-// Stc1000pRunMode readRunmode() {
+// Stc1000pRunMode? readRunmode() {
 //   Stc1000pRunMode runMode;
-//   return (stc1000p.readRunMode(&runMode)) ? runMode : false;  
+//   return (stc1000p.readRunMode(&runMode)) ? runMode : null;  
 // }
 
 //get current temperature on STC
@@ -147,12 +147,55 @@ bool readRamping() {
 }
 
 
-//write new set point
+//write new setpoint
 void writeSetPoint(float sp) {
   (stc1000p.writeSetpoint(sp)) 
   ? Serial.print("Writing new setpoint: "), Serial.println(sp, 1)
   : Serial.println("Failed to write setpoint");
 }
+
+//write hysteris value
+void writeHysteris(float hysteresis) {
+  (stc1000p.writeHysteresis(hysteresis)) 
+  ? Serial.print("Writing new hysteresis: "), Serial.println(hysteresis, 1)
+  : Serial.println("Failed to write hysteresis");
+}
+
+//write temperature correction
+void writeTempCorrection(float tempCorrection) {
+  (stc1000p.writeTemperatureCorrection(tempCorrection)) 
+  ? Serial.print("Writing new tempCorrection: "), Serial.println(tempCorrection, 1)
+  : Serial.println("Failed to write tempCorrection");  
+}
+
+//write setpoint alarm
+void writeSetpointAlarm(float setpointAlarm) {
+  (stc1000p.writeSetpointAlarm(setpointAlarm)) 
+  ? Serial.print("Writing new setpointAlarm: "), Serial.println(setpointAlarm, 1)
+  : Serial.println("Failed to write setpointAlarm");  
+}
+
+//write cooling delay
+void writeCoolingDelay(int coolingDelay) {
+  (stc1000p.writeCoolingDelay(coolingDelay)) 
+  ? Serial.print("Writing new coolingDelay: "), Serial.println(coolingDelay, 1)
+  : Serial.println("Failed to write coolingDelay");
+}
+
+//write heating delay
+void writeHeatingDelay(int heatingDelay) {
+  (stc1000p.writeHeatingDelay(heatingDelay)) 
+  ? Serial.print("Writing new heatingDelay: "), Serial.println(heatingDelay, 1)
+  : Serial.println("Failed to write heatingDelay");
+}
+
+//write ramping
+void writeRamping(bool ramping) {
+  (stc1000p.writeRamping(ramping)) 
+  ? Serial.print("Writing ramping: "), Serial.println(ramping)
+  : Serial.println("Failed to write ramping");
+}
+
 
 void readFromDatabase() {
   if(Firebase.RTDB.getInt(&fbdo, "STC1000get/setpoint")) {
@@ -203,7 +246,7 @@ void setup() {
   Serial.begin(115200);
 
   //set STC to profile 0
-  stc1000p.writeRunMode(Stc1000pRunMode::PR0);
+  stc1000p.writeRunMode(Stc1000pRunMode::TH);
 
   wifiConnetion();
 
