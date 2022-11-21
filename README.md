@@ -11,14 +11,17 @@ The code is also inspired by https://github.com/vieuxsinge/stc1000esp, but I nev
 Some notes:
 STC1000+ is flashed with the picprog_com script. This is needed to have the half duplex communication between ESP and STC
 
+For a full guide to set up Firebase, see https://randomnerdtutorials.com/esp8266-data-logging-firebase-realtime-database/
 Firebase:
-For a full guide to set up Firebase, see https://randomnerdtutorials.com/esp32-firebase-realtime-database/#create-firebase-project
 The following changes are needed for this project:
+TODO: set up guides
 
 Libraries:
 https://github.com/fredericsureau/arduino-stc1000p
 https://www.arduino.cc/reference/en/libraries/firebase-arduino-client-library-for-esp8266-and-esp32/
 https://www.arduino.cc/reference/en/libraries/ntpclient/
+https://github.com/tzapu/WiFiManager
+https://github.com/khoih-prog/ESP_DoubleResetDetector
 
 
 Pin configuration:
