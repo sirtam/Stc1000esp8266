@@ -1,14 +1,3 @@
-#include "config.h"
-
-#include <Stc1000p.h>
-#include <ESP8266WiFi.h>
-#include <NTPClient.h>
-#include <WiFiUdp.h>
-#include <Firebase_ESP_Client.h>
-#include "addons/TokenHelper.h" //Provide the token generation process info.
-#include "addons/RTDBHelper.h" //Provide the RTDB payload printing info and other helper functions.
-//#include <HTTPClient.h>
-
 /*
 * Copyright 2022 Thomas André Transeth
 *
@@ -24,6 +13,18 @@
 * This code only set the set point so you have to manually set all temperatures 
 * TODO include more profiles
 */
+
+#include "config.h"
+
+#include <Stc1000p.h>
+#include <ESP8266WiFi.h>
+#include <WiFiManager.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <Firebase_ESP_Client.h>
+#include "addons/TokenHelper.h" //Provide the token generation process info.
+#include "addons/RTDBHelper.h" //Provide the RTDB payload printing info and other helper functions.
+//#include <HTTPClient.h>
 
 //use D0 pin since this has a built in pulldown resistor
 Stc1000p stc1000p(D0, INPUT_PULLDOWN_16);
@@ -47,6 +48,7 @@ bool signupOK = false; //is firebase connected?
 
 //connect to WiFi
 void wifiConnetion() {
+
   //set up wifi connection
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
@@ -67,11 +69,37 @@ void wifiConnetion() {
   Serial.println(WiFi.localIP());
 }
 
-// //get current runmode TODO: can't return bool
-// Stc1000pRunMode? readRunmode() {
-//   Stc1000pRunMode runMode;
-//   return (stc1000p.readRunMode(&runMode)) ? runMode : null;  
-// }
+//get current runmode TODO: can't return bool
+String readRunmode() {
+  Stc1000pRunMode runMode;
+  bool success = stc1000p.readRunMode(&runMode);
+
+  switch(runMode) {
+    case Stc1000pRunMode::PR0:
+      return "PR0";
+      break;
+    case Stc1000pRunMode::PR1:
+     return "PR1";
+      break;
+    case Stc1000pRunMode::PR2:
+      return "PR2";
+      break;
+    case Stc1000pRunMode::PR3:
+      return "PR3";
+      break;
+    case Stc1000pRunMode::PR4:
+      return "PR4";
+      break;
+    case Stc1000pRunMode::PR5:
+      return "PR5";
+      break;
+    case Stc1000pRunMode::TH:
+      return "TH";
+      break;
+    default:
+      return "None";
+  }
+}
 
 //get current temperature on STC
 float readTemp() {
@@ -196,17 +224,52 @@ void writeRamping(bool ramping) {
   : Serial.println("Failed to write ramping");
 }
 
-
+//this function needs to be rewritten to be more effective
 void readFromDatabase() {
+  bool sendToDB = false;
+  
   if(Firebase.RTDB.getInt(&fbdo, "STC1000get/setpoint")) {
-
     float dbSP = fbdo.to<float>(); //sp from database
-    float stcSP = readSetPoint(); //sp from stc     
 
-    if(stcSP && dbSP != stcSP) {
+    if(dbSP != readSetPoint()) {
+        Serial.println("Setting setpoint");
         writeSetPoint(dbSP); //writing new set point
-        writeToDatabase(); //force new send to db
+        sendToDB = true;
     }
+  }
+
+  if(Firebase.RTDB.getInt(&fbdo, "STC1000get/coolingDelay")) {
+    float dbCD = fbdo.to<float>(); //sp from database
+
+    if(dbCD != readCoolingDelay()) {
+        Serial.println("Setting coolingDelay");
+        writeCoolingDelay(dbCD); //writing new cooling delay
+        sendToDB = true;
+    }
+  }
+
+  if(Firebase.RTDB.getInt(&fbdo, "STC1000get/heatingDelay")) {
+    float dbHD = fbdo.to<float>(); //sp from database
+
+    if(dbHD != readHeatingDelay()) {
+        Serial.println("Setting heatingDelay");
+        writeHeatingDelay(dbHD); //writing new heating delay
+        sendToDB = true;
+    }
+  }
+
+  if(Firebase.RTDB.getInt(&fbdo, "STC1000get/tempCorrection")) {
+    float dbTC = fbdo.to<float>(); //sp from database
+
+    if(dbTC != readTempCorrection()) {
+        Serial.println("Setting tempCorrection");
+        writeTempCorrection(dbTC); //writing new temperature correction
+        sendToDB = true;
+    }
+  }
+
+  if(sendToDB) {
+    writeToDatabase(); //force new send to db
   }
 }
 
@@ -219,19 +282,20 @@ void writeToDatabase() {
 
   //only send data if temp and epoch are read
   if (temp && epochtime) {
-    json.set("STC1000set/epochtime", epochtime);
-    json.set("STC1000set/temperature", temp);
-    json.set("STC1000set/setpoint", readSetPoint());
-    json.set("STC1000set/isheating", readHeating());
-    json.set("STC1000set/iscooling", readCooling());
-    json.set("STC1000set/hysteresis", readHysteresis());
-    json.set("STC1000set/tempCorrection", readTempCorrection());
-    json.set("STC1000set/setpointAlarm", readSetpointAlarm());
-    json.set("STC1000set/currentStep", readCurrentStep());
-    json.set("STC1000set/currentDuration", readCurrentDuration());
-    json.set("STC1000set/coolingDelay", readCoolingDelay());
-    json.set("STC1000set/heatingDelay", readHeatingDelay());
-    json.set("STC1000set/ramping", readRamping());
+    json.set("epochtime", epochtime);
+    json.set("temperature", temp);
+    json.set("setpoint", readSetPoint());
+    json.set("isheating", readHeating());
+    json.set("iscooling", readCooling());
+    json.set("hysteresis", readHysteresis());
+    json.set("tempCorrection", readTempCorrection());
+    json.set("setpointAlarm", readSetpointAlarm());
+    json.set("currentStep", readCurrentStep());
+    json.set("currentDuration", readCurrentDuration());
+    json.set("coolingDelay", readCoolingDelay());
+    json.set("heatingDelay", readHeatingDelay());
+    json.set("ramping", readRamping());
+    json.set("runMode", readRunmode());
 
     Serial.printf("Sending jSON: %s\n", Firebase.RTDB.setJSON(&fbdo, "STC1000set", &json) ? "ok" : fbdo.errorReason());
   }
@@ -271,8 +335,10 @@ void setup() {
 
 void loop() {
 
+  //Serial.print("WiFi status ");
+  //Serial.println(WiFi.status());
   if(WiFi.status() != WL_CONNECTED) {
-    Serial.println("Reconnection WiFi");
+    Serial.println("Reconnect WiFi");
     wifiConnetion();
   }
   else {
