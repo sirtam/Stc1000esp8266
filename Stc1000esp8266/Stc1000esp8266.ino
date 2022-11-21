@@ -29,6 +29,10 @@
 //use D0 pin since this has a built in pulldown resistor
 Stc1000p stc1000p(D0, INPUT_PULLDOWN_16);
 
+//responsible for connecting to a WiFi
+WiFiManager wifiManager;
+WiFiClient client;
+
 //define firebase data object
 FirebaseData fbdo;
 FirebaseAuth auth;
@@ -45,29 +49,6 @@ unsigned long sendDataPrevMillis = 0; //tracker of time intervall for sending da
 unsigned long getDataPrevMillis = 0; //tracker of time intervall for requesting data
 
 bool signupOK = false; //is firebase connected?
-
-//connect to WiFi
-void wifiConnetion() {
-
-  //set up wifi connection
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  //wait for connection
-  Serial.print("\nConnecting to WiFi: ");
-  Serial.println(WIFI_SSID);
-  while (WiFi.status() != WL_CONNECTED) {
-    int resetTime = millis();
-    delay(500);
-    Serial.print(".");
-    if(resetTime > millis() - 300000) {
-      ESP.reset();
-    }
-  }
-
-  //connected
-  Serial.print("\nWiFi connected with IP: ");
-  Serial.println(WiFi.localIP());
-}
 
 //get current runmode TODO: can't return bool
 String readRunmode() {
@@ -312,7 +293,8 @@ void setup() {
   //set STC to profile 0
   stc1000p.writeRunMode(Stc1000pRunMode::TH);
 
-  wifiConnetion();
+  //set up "AutoConnectAP" and handles WiFi SSID and PASS
+  wifiManager.autoConnect("STC1000_setup");
 
   //firebase credentials
   config.api_key = API_KEY;
@@ -339,7 +321,7 @@ void loop() {
   //Serial.println(WiFi.status());
   if(WiFi.status() != WL_CONNECTED) {
     Serial.println("Reconnect WiFi");
-    wifiConnetion();
+    wifiManager.autoConnect("STC1000_setup");
   }
   else {
     if(Firebase.ready()) {
