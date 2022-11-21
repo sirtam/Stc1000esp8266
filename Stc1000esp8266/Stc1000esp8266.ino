@@ -14,6 +14,19 @@
 * TODO include more profiles
 */
 
+#define ESP_DRD_USE_EEPROM true
+#define DOUBLERESETDETECTOR_DEBUG true
+
+#include <ESP_DoubleResetDetector.h>
+
+//number of seconds to consider double reset
+#define DRD_TIMEOUT 10
+
+// RTC Memory Address for the DoubleResetDetector to use
+#define DRD_ADDRESS 0
+
+DoubleResetDetector* drd;
+
 #include "config.h"
 
 #include <Stc1000p.h>
@@ -24,7 +37,6 @@
 #include <Firebase_ESP_Client.h>
 #include "addons/TokenHelper.h" //Provide the token generation process info.
 #include "addons/RTDBHelper.h" //Provide the RTDB payload printing info and other helper functions.
-//#include <HTTPClient.h>
 
 //use D0 pin since this has a built in pulldown resistor
 Stc1000p stc1000p(D0, INPUT_PULLDOWN_16);
@@ -293,8 +305,20 @@ void setup() {
   //set STC to profile 0
   stc1000p.writeRunMode(Stc1000pRunMode::TH);
 
+  drd = new DoubleResetDetector(DRD_TIMEOUT, DRD_ADDRESS);
+  wifiManager.setConfigPortalTimeout(600);
+
   //set up "AutoConnectAP" and handles WiFi SSID and PASS
-  wifiManager.autoConnect("STC1000_setup");
+  if (drd->detectDoubleReset()) 
+  {
+    //start portal after double reset
+    wifiManager.startConfigPortal("STC1000_setup");
+  } 
+  else 
+  {
+    //start autoconnect
+    wifiManager.autoConnect("STC1000_setup");
+  }
 
   //firebase credentials
   config.api_key = API_KEY;
@@ -321,7 +345,7 @@ void loop() {
   //Serial.println(WiFi.status());
   if(WiFi.status() != WL_CONNECTED) {
     Serial.println("Reconnect WiFi");
-    wifiManager.autoConnect("STC1000_setup");
+    wifiManager.startConfigPortal("STC1000_setup");
   }
   else {
     if(Firebase.ready()) {
