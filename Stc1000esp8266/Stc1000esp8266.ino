@@ -340,9 +340,9 @@ void setup() {
 }
 
 void loop() {
+  
+  drd->loop(); //check double reset consideration timer
 
-  //Serial.print("WiFi status ");
-  //Serial.println(WiFi.status());
   if(WiFi.status() != WL_CONNECTED) {
     Serial.println("Reconnect WiFi");
     wifiManager.startConfigPortal("STC1000_setup");
