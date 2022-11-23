@@ -22,12 +22,11 @@
 //number of seconds to consider double reset
 #define DRD_TIMEOUT 10
 
-// RTC Memory Address for the DoubleResetDetector to use
-#define DRD_ADDRESS 0
+//EEPROM Memory Address for the DoubleResetDetector to use
+#define DRD_ADDRESS 350
 
-DoubleResetDetector* drd;
-
-#include "config.h"
+//EEPROM Memory Address for Firebase credentials
+#define FB_ADDRESS 0
 
 #include <Stc1000p.h>
 #include <ESP8266WiFi.h>
@@ -50,6 +49,15 @@ FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
+//values for setting Firebase credentials
+char api_key[50] = {0};
+char database_url[150] = {0};
+char username[100] = {0};
+char password[50] = {0};
+
+//double reset detector
+DoubleResetDetector* drd;
+
 //NTP server to request epoch time
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
@@ -60,7 +68,19 @@ int getIntervalMillis = 10000; //how often data is requested from db
 unsigned long sendDataPrevMillis = 0; //tracker of time intervall for sending data
 unsigned long getDataPrevMillis = 0; //tracker of time intervall for requesting data
 
+int connectRetry = 5; //number of reconnects before setting up new configuration
+int wifiRetries = 0; //WiFi counter
+int fbRetries = 0; //Firebase counter
+
 bool signupOK = false; //is firebase connected?
+
+//making handleling Firebase credentials easier
+struct FirebaseCredentials {
+  char api_key[50];
+  char database_url[150];
+  char username[100];
+  char password[50];    
+};
 
 //get current runmode TODO: can't return bool
 String readRunmode() {
@@ -298,12 +318,30 @@ void writeToDatabase() {
   }
 }
 
+FirebaseCredentials getCredentials() {
+  FirebaseCredentials cred;
+  EEPROM.get(FB_ADDRESS, cred);
+  return cred;
+}
+
 void setup() {
 
   Serial.begin(115200);
 
   //set STC to profile 0
   stc1000p.writeRunMode(Stc1000pRunMode::TH);
+
+  //congigure Firebase input fields in config
+  WiFiManagerParameter fb_api_key("fb_api_key", "Firebase API key", api_key, 50);
+  WiFiManagerParameter fb_database_url("fb_database_url", "Firebase URL", database_url, 150);
+  WiFiManagerParameter fb_user("fb_user","Firebase username", username, 100);
+  WiFiManagerParameter fb_pass("fb_pass","Firebase password", password, 50);
+
+  //add parameters
+  wifiManager.addParameter(&fb_api_key);
+  wifiManager.addParameter(&fb_database_url);
+  wifiManager.addParameter(&fb_user);
+  wifiManager.addParameter(&fb_pass);
 
   drd = new DoubleResetDetector(DRD_TIMEOUT, DRD_ADDRESS);
   wifiManager.setConfigPortalTimeout(600);
@@ -313,6 +351,34 @@ void setup() {
   {
     //start portal after double reset
     wifiManager.startConfigPortal("STC1000_setup");
+
+    //copy Firebase credentials from config to global variables
+    strcpy(api_key, fb_api_key.getValue());
+    strcpy(database_url, fb_database_url.getValue());
+    strcpy(username, fb_user.getValue());
+    strcpy(password, fb_pass.getValue());
+    
+    //do not change Firebase credentials if empty
+    if(strlen(api_key) != 0 && strlen(database_url) != 0 && strlen(username) != 0 && strlen(password) != 0) {
+      FirebaseCredentials cred;
+      strcpy(cred.api_key, api_key);
+      strcpy(cred.database_url, database_url);
+      strcpy(cred.username, username);
+      strcpy(cred.password, password);
+    
+      //store Firebase credentials in EEPROM
+      EEPROM.begin(350);
+      EEPROM.put(FB_ADDRESS, cred);
+      EEPROM.end();
+      Serial.println("EEPROM written");
+
+      //for some reason ESP needs to be reset to get input correct. FIX THIS
+      delay(5000);
+      ESP.restart();
+    }
+    else {
+      Serial.println("Do not write to EEPROM");
+    }
   } 
   else 
   {
@@ -320,16 +386,19 @@ void setup() {
     wifiManager.autoConnect("STC1000_setup");
   }
 
-  //firebase credentials
-  config.api_key = API_KEY;
-  config.database_url = DATABASE_URL;
+  //get Firebase credentials from EEPROM  
+  FirebaseCredentials fb_credentials = getCredentials();
+
+  //set firebase credentials
+  config.api_key = fb_credentials.api_key;
+  config.database_url = fb_credentials.database_url;
 
   //callback function for the long running token generation task
   config.token_status_callback = tokenStatusCallback; //see addons/TokenHelper.h
   
   //assign user credentials
-  auth.user.email = USER_EMAIL;
-  auth.user.password = USER_PASSWORD;
+  auth.user.email = fb_credentials.username;
+  auth.user.password = fb_credentials.password;
 
   //start connection
   Firebase.begin(&config, &auth);
@@ -345,7 +414,17 @@ void loop() {
 
   if(WiFi.status() != WL_CONNECTED) {
     Serial.println("Reconnect WiFi");
-    wifiManager.startConfigPortal("STC1000_setup");
+
+    //make sure config AP is started if WiFi connection repeatedly fails  
+    if(wifiRetries <= connectRetry) {
+      wifiManager.startConfigPortal("STC1000_setup");
+      wifiRetries = 0;
+    }
+    else {
+      wifiManager.autoConnect("STC1000_setup");
+      wifiRetries++;
+      delay(5000); //wait 5 seconds before retry
+    }
   }
   else {
     if(Firebase.ready()) {
@@ -361,7 +440,13 @@ void loop() {
       }
     }
     else {
-      Serial.println("-- Not able to connect to Firebase --");
+      Serial.println("-- Not able to connect to Firebase --");   
+      fbRetries++;
+      delay(5000); //wait 5 seconds before retry
+
+      if(fbRetries >= connectRetry) {
+        ESP.restart();
+      }
     }
   }
 }
