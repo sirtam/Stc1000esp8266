@@ -16,6 +16,12 @@ Firebase:
 The following changes are needed for this project:
 TODO: set up guides
 
+Flash upload tool:
+https://www.espressif.com/en/support/download/other-tools
+SPE Speed: 40MHz
+SPI Mode: DIO
+Sector: 0x00000
+
 Libraries:
 https://github.com/fredericsureau/arduino-stc1000p
 https://www.arduino.cc/reference/en/libraries/firebase-arduino-client-library-for-esp8266-and-esp32/
