@@ -415,16 +415,12 @@ void loop() {
   if(WiFi.status() != WL_CONNECTED) {
     Serial.println("Reconnect WiFi");
 
-    //make sure config AP is started if WiFi connection repeatedly fails  
-    if(wifiRetries <= connectRetry) {
-      wifiManager.startConfigPortal("STC1000_setup");
-      wifiRetries = 0;
+    if(wifiManager.getWiFiIsSaved()) {
+      wifiManager.setEnableConfigPortal(false);
     }
-    else {
-      wifiManager.autoConnect("STC1000_setup");
-      wifiRetries++;
-      delay(5000); //wait 5 seconds before retry
-    }
+
+    wifiManager.autoConnect("STC1000_setup");
+    delay(5000); //wait 5 seconds before retry
   }
   else {
     if(Firebase.ready()) {
