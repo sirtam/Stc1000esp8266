@@ -68,9 +68,8 @@ int getIntervalMillis = 10000; //how often data is requested from db
 unsigned long sendDataPrevMillis = 0; //tracker of time intervall for sending data
 unsigned long getDataPrevMillis = 0; //tracker of time intervall for requesting data
 
-int connectRetry = 5; //number of reconnects before setting up new configuration
-int wifiRetries = 0; //WiFi counter
-int fbRetries = 0; //Firebase counter
+int connectRetry = 1200; //number of reconnects before setting up new configuration
+int reconnectRetries = 0; //reconnect counter
 
 bool signupOK = false; //is firebase connected?
 
@@ -115,7 +114,7 @@ String readRunmode() {
 }
 
 //get current temperature on STC
-float readTemp() {
+float readTemperature() {
   float temp;
   return (stc1000p.readTemperature(&temp)) ? temp : false;  
 }
@@ -291,7 +290,7 @@ void writeToDatabase() {
   timeClient.update(); //update time
 
   int epochtime = timeClient.getEpochTime();
-  float temp = readTemp();
+  float temp = readTemperature();
 
   //only send data if temp and epoch are read
   if (temp && epochtime) {
@@ -373,7 +372,7 @@ void setup() {
       Serial.println("EEPROM written");
 
       //for some reason ESP needs to be reset to get input correct. FIX THIS
-      delay(5000);
+      delay(500);
       ESP.restart();
     }
     else {
@@ -383,6 +382,10 @@ void setup() {
   else 
   {
     //start autoconnect
+
+    if(wifiManager.getWiFiIsSaved()) {
+      wifiManager.setEnableConfigPortal(false);
+    }
     wifiManager.autoConnect("STC1000_setup");
   }
 
@@ -420,29 +423,30 @@ void loop() {
     }
 
     wifiManager.autoConnect("STC1000_setup");
-    delay(5000); //wait 5 seconds before retry
+    delay(500); //wait 5 seconds before retry
+  }
+  else if(Firebase.ready()) {
+    //check if temperature setpoint has been altered
+    if (millis() - getDataPrevMillis > getIntervalMillis || getDataPrevMillis == 0) {
+      getDataPrevMillis = millis();
+      readFromDatabase();
+    }
+    //send data to db
+    if (millis() - sendDataPrevMillis > sendIntervalMillis || sendDataPrevMillis == 0) {
+      sendDataPrevMillis = millis();
+      writeToDatabase();
+    }
   }
   else {
-    if(Firebase.ready()) {
-    //check if temperature setpoint has been altered
-      if (millis() - getDataPrevMillis > getIntervalMillis || getDataPrevMillis == 0) {
-        getDataPrevMillis = millis();
-        readFromDatabase();
-      }
-      //send data to db
-      if (millis() - sendDataPrevMillis > sendIntervalMillis || sendDataPrevMillis == 0) {
-        sendDataPrevMillis = millis();
-        writeToDatabase();
-      }
-    }
-    else {
-      Serial.println("-- Not able to connect to Firebase --");   
-      fbRetries++;
-      delay(5000); //wait 5 seconds before retry
+    Serial.println("-- Not able to connect to Wifi or Firebase --");   
 
-      if(fbRetries >= connectRetry) {
-        ESP.restart();
-      }
+    if(reconnectRetries >= connectRetry) {
+      Serial.println("-- Number of connect retries reached, rebooting ESP --");   
+      ESP.restart();
     }
+    
+    reconnectRetries++;
+    delay(500); //wait 5 seconds before retry
+
   }
 }
