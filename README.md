@@ -32,10 +32,10 @@ https://github.com/khoih-prog/ESP_DoubleResetDetector
 
 Pin configuration:
 
-STC1000 | NodeMCU
-------- | -------
-ICSPCLK | D0
-ICSPDAT | Unused
-GND     | GND
-5V      | VIN
-mCLR    | Unused
+STC1000 | NodeMCU | Color
+------- | -------   -------
+ICSPCLK | D0      | Red
+ICSPDAT | Unused  | Green
+GND     | GND     | Black
+5V      | VIN     | White
+mCLR    | Unused  | Blue
