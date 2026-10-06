@@ -1,2 +1,10 @@
-# Config file
-config.h
+# Firebase cache
+.firebase/
+
+# Gemini CLI Agent Skills
+.agents/
+skills-lock.json
+
+# Local private files (if any)
+*.local.h
+secrets.h

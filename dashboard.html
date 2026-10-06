@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STC-1000 ESP8266 Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+            --accent: #38bdf8;
+            --heating: #f87171;
+            --cooling: #60a5fa;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            max-width: 1000px;
+            width: 100%;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .settings-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--card);
+            color: var(--accent);
+            border: 1px solid #334155;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 101;
+            font-size: 1.2rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        .config-overlay {
+            position: fixed;
+            top: 0;
+            right: -320px;
+            width: 280px;
+            height: 100vh;
+            background: var(--card);
+            padding: 20px;
+            padding-top: 80px;
+            box-shadow: -4px 0 15px rgb(0 0 0 / 0.3);
+            transition: right 0.3s ease;
+            z-index: 100;
+            border-left: 1px solid #334155;
+            font-size: 0.8rem;
+        }
+        .config-overlay.open {
+            right: 0;
+        }
+        input {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: white;
+            padding: 4px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            width: 100%;
+        }
+        button {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+        }
+        .range-btn {
+            width: 50px;
+        }
+        
+        /* New Ramping Toggle Styles */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #475569;
+            transition: .4s;
+            border-radius: 20px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px; width: 14px;
+            left: 3px; bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider { background-color: var(--accent); }
+        input:checked + .slider:before { transform: translateX(20px); }
+    </style>
+</head>
+<body>
+
+<div class="settings-toggle" onclick="window.toggleConfig()">⚙️</div>
+
+<div class="config-overlay" id="config">
+    <div id="login-section">
+        <strong>1. Login</strong>
+        <input type="text" id="email" placeholder="Email">
+        <input type="password" id="password" placeholder="Password">
+        <button id="loginBtn">Login</button>
+    </div>
+    <hr style="margin: 15px 0; border: 0; border-top: 1px solid #334155;">
+    <div id="config-section">
+        <strong>2. Firebase Config</strong>
+        <input type="text" id="apiKey" placeholder="API Key">
+        <input type="text" id="dbUrl" placeholder="Database URL (https://...)">
+        <button id="saveConfigBtn">Save & Connect</button>
+    </div>
+    <button id="seedBtn" style="margin-top: 10px; background: #059669; color: white;">Seed 1 Year of Data</button>
+    <button id="logoutBtn" style="margin-top: 10px; background: #475569; display: none;">Logout</button>
+</div>
+
+<div class="container">
+    <div class="header">
+        <h1>STC-1000 Fermentation Monitor</h1>
+        <p id="connection-status">Please log in to access data...</p>
+    </div>
+
+    <div class="stats-grid">
+        <div class="card">
+            <div>Current Temp</div>
+            <div class="temp-display" id="currTemp">--.-°C</div>
+            <div id="statusBadge" class="status-badge status-idle">IDLE</div>
+        </div>
+        <div class="card">
+            <div>Setpoint</div>
+            <div class="temp-display" id="setPoint" style="font-size: 2rem;">--.-°C</div>
+            <div class="toggle-container">
+                <span>Linear Ramping</span>
+                <label class="switch">
+                    <input type="checkbox" id="rampingToggle" onchange="window.toggleRamping(this.checked)">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+        <div class="card">
+            <div>Current Mode</div>
+            <div class="temp-display" id="runModeDisplay" style="font-size: 1.5rem; color: #94a3b8; margin-top: 10px;">THERMOSTAT</div>
+            <div id="lastUpdate" style="margin-top: 20px; font-size: 0.8rem; opacity: 0.6;">--:--:--</div>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <div style="display: flex; gap: 10px; margin-bottom: 10px; justify-content: flex-end;">
+            <button class="range-btn" onclick="window.setRange(3)">3h</button>
+            <button class="range-btn" onclick="window.setRange(12)">12h</button>
+            <button class="range-btn" onclick="window.setRange(24)">24h</button>
+            <button class="range-btn" onclick="window.setRange(168)">1w</button>
+            <button class="range-btn" onclick="window.setRange(720)">1m</button>
+            <button class="range-btn" onclick="window.setRange(8760)">1y</button>
+            <button class="range-btn" onclick="window.setRange(0)">All</button>
+        </div>
+        <div style="height: 400px;">
+            <canvas id="tempChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, onValue, set, update, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+    let chart;
+    let auth;
+    let db;
+    let rawLogs = {};
+    let hoursRange = 24;
+
+    window.setRange = (hours) => {
+        hoursRange = hours;
+        updateChart(rawLogs);
+    };
+
+    window.toggleConfig = () => {
+        const overlay = document.getElementById('config');
+        overlay.classList.toggle('open');
+    };
+
+    window.toggleRamping = (enabled) => {
+        if (!db) return;
+        set(ref(db, 'STC1000get/ramping'), enabled)
+            .catch(err => showError("Toggle Failed: " + err.message));
+    };
+
+    document.getElementById('saveConfigBtn').onclick = () => {
+        const config = {
+            apiKey: document.getElementById('apiKey').value,
+            databaseURL: document.getElementById('dbUrl').value
+        };
+        localStorage.setItem('fbConfig', JSON.stringify(config));
+        location.reload();
+    };
+
+    const savedConfig = localStorage.getItem('fbConfig');
+    if (savedConfig) {
+        const firebaseConfig = JSON.parse(savedConfig);
+        document.getElementById('apiKey').value = firebaseConfig.apiKey;
+        document.getElementById('dbUrl').value = firebaseConfig.databaseURL;
+        
+        const app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getDatabase(app);
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('login-section').style.display = 'none';
+                document.getElementById('logoutBtn').style.display = 'block';
+                initDashboard();
+            } else {
+                document.getElementById('login-section').style.display = 'block';
+                document.getElementById('logoutBtn').style.display = 'none';
+                document.getElementById('connection-status').innerText = "Logged out. Please log in.";
+                document.getElementById('connection-status').style.color = "#94a3b8";
+            }
+        });
+    }
+
+    document.getElementById('loginBtn').onclick = () => {
+        const email = document.getElementById('email').value;
+        const pass = document.getElementById('password').value;
+        setPersistence(auth, browserLocalPersistence)
+            .then(() => signInWithEmailAndPassword(auth, email, pass))
+            .catch(err => showError("Login Failed: " + err.message));
+    };
+
+    document.getElementById('logoutBtn').onclick = () => signOut(auth);
+
+    document.getElementById('seedBtn').onclick = () => {
+        if (confirm("This will generate ~3000 points (26 batches) for the last year. Continue?")) {
+            seedYearOfData(db);
+        }
+    };
+
+    function initDashboard() {
+        try {
+            const statusLabel = document.getElementById('connection-status');
+            statusLabel.innerText = "Connecting...";
+
+            const statusRef = ref(db, 'STC1000set');
+            onValue(statusRef, (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    updateLiveUI(data);
+                    statusLabel.innerText = "Connected: Live Stream Active";
+                    statusLabel.style.color = "#38bdf8";
+                } else {
+                    statusLabel.innerText = "Connected: No live data in 'STC1000set'";
+                }
+            }, (err) => showError("Live Read Error: " + err.message));
+
+            const logsRef = ref(db, 'STC1000logs');
+            onValue(logsRef, (snapshot) => {
+                rawLogs = snapshot.val() || {};
+                if (Object.keys(rawLogs).length === 0) {
+                    console.log("No logs found, generating mock data...");
+                    generateMockData(db);
+                } else {
+                    updateChart(rawLogs);
+                }
+            }, (err) => showError("Log Read Error: " + err.message));
+
+        } catch (e) {
+            showError("Dashboard Init Error: " + e.message);
+        }
+    }
+
+    function showError(msg) {
+        const label = document.getElementById('connection-status');
+        label.innerText = "ERROR: " + msg;
+        label.style.color = "#f87171";
+        console.error(msg);
+    }
+
+    function updateLiveUI(data) {
+        document.getElementById('currTemp').innerText = data.temperature.toFixed(1) + "°C";
+        document.getElementById('setPoint').innerText = data.setpoint.toFixed(1) + "°C";
+        
+        // Update Ramping Toggle State
+        const rampToggle = document.getElementById('rampingToggle');
+        if (rampToggle && rampToggle.checked !== data.ramping) {
+            rampToggle.checked = data.ramping;
+        }
+
+        // Update Run Mode Display
+        const modeLabel = document.getElementById('runModeDisplay');
+        if (modeLabel) {
+            const modes = ["THERMOSTAT", "PROFILE 0", "PROFILE 1", "PROFILE 2", "PROFILE 3", "PROFILE 4", "PROFILE 5"];
+            modeLabel.innerText = modes[data.runMode] || "UNKNOWN";
+            modeLabel.style.color = data.runMode > 0 ? "var(--accent)" : "#94a3b8";
+        }
+
+        document.getElementById('lastUpdate').innerText = new Date(data.epochtime * 1000).toLocaleTimeString();
+        
+        const badge = document.getElementById('statusBadge');
+        if (data.isheating) {
+            badge.innerText = "HEATING";
+            badge.className = "status-badge status-heating";
+        } else if (data.iscooling) {
+            badge.innerText = "COOLING";
+            badge.className = "status-badge status-cooling";
+        } else {
+            badge.innerText = "IDLE";
+            badge.className = "status-badge status-idle";
+        }
+    }
+
+    function updateChart(logs) {
+        const now = Date.now();
+        const cutoff = hoursRange === 0 ? 0 : now - (hoursRange * 60 * 60 * 1000);
+
+        const chartData = Object.keys(logs)
+            .map(key => ({
+                x: parseInt(key) * 1000,
+                y: logs[key].temperature
+            }))
+            .filter(point => point.x >= cutoff)
+            .sort((a, b) => a.x - b.x);
+
+        if (chart) {
+            chart.data.datasets[0].data = chartData;
+            chart.update();
+        } else {
+            const ctx = document.getElementById('tempChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Temperature (°C)',
+                        data: chartData,
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'hour' },
+                            grid: { color: '#334155' }
+                        },
+                        y: {
+                            grid: { color: '#334155' },
+                            ticks: { color: '#94a3b8' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+    }
+
+    async function seedYearOfData(db) {
+        const now = Math.floor(Date.now() / 1000);
+        const updates = {};
+        document.getElementById('connection-status').innerText = "Seeding 1 Year of Data...";
+        
+        for (let i = 0; i < 3000; i++) {
+            const time = now - (i * 10800); 
+            const dayOfYear = Math.floor(i / 8); 
+            const isFermenting = (dayOfYear % 14) < 10;
+            let temp;
+            if (isFermenting) {
+                const progress = (dayOfYear % 14) / 10;
+                temp = 20 - (progress * 2) + (Math.random() * 0.3);
+                if (progress > 0.8) temp += 2; 
+            } else {
+                temp = 22 + Math.sin(i / 10) * 3 + (Math.random() * 1);
+            }
+            updates[`STC1000logs/${time}`] = {
+                temperature: parseFloat(temp.toFixed(1)),
+                heating: isFermenting && temp < 18,
+                cooling: isFermenting && temp > 19
+            };
+        }
+        
+        try {
+            await update(ref(db), updates);
+            document.getElementById('connection-status').innerText = "Seeding Complete!";
+            setTimeout(() => location.reload(), 2000);
+        } catch (err) {
+            showError("Seed Failed: " + err.message);
+        }
+    }
+
+    function generateMockData(db) {
+        const now = Math.floor(Date.now() / 1000);
+        const mockLogs = {};
+        for (let i = 0; i < 48; i++) {
+            const time = now - (i * 900);
+            const temp = 18 + Math.sin(i / 5) * 2 + (Math.random() * 0.5);
+            mockLogs[time] = {
+                temperature: temp,
+                heating: false,
+                cooling: false
+            };
+            set(ref(db, `STC1000logs/${time}`), mockLogs[time]);
+        }
+        return mockLogs;
+    }
+</script>
+
+</body>
+</html>
