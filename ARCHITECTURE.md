@@ -7,10 +7,10 @@ The system uses a Star Topology with Firebase as the central synchronization hub
 
 ```mermaid
 graph LR
-    STC[STC-1000 Hardware] -- GPIO 14 / One-Wire -- ESP32[ESP32 Firmware]
-    ESP32 -- WiFi / TLS 1.3 -- FB[(Firebase RTDB)]
-    FB -- WebSockets -- Dash[Web Dashboard]
-    User((User)) -- Auth -- Dash
+    STC[STC-1000 Hardware] -- GPIO 14 / One-Wire --- ESP32[ESP32 Firmware]
+    ESP32 -- WiFi / TLS 1.3 --- FB[(Firebase RTDB)]
+    FB -- WebSockets --- Dash[Web Dashboard]
+    User((User)) -- Auth --- Dash
 ```
 
 ## 2. Firmware Class Diagram
